@@ -54,6 +54,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 #endif
 
+// tree depth definitions
+#define LOCAL_OCTOMAP_TREE_DEPTH 16
+#define GLOBAL_OCTOMAP_TREE_DEPTH 8
+
 using namespace rtabmap;
 
 MapsManager::MapsManager() :
@@ -74,9 +78,12 @@ MapsManager::MapsManager() :
 		octomap_(new OctoMap),
 #endif
 #endif
-		octomapTreeDepth_(16),
+		octomapTreeDepth_(GLOBAL_OCTOMAP_TREE_DEPTH),
 		octomapUpdated_(true),
-		latching_(true)
+		latching_(true),
+
+		localOctomapUpdated_(true),
+		localOctomapTreeDepth_(LOCAL_OCTOMAP_TREE_DEPTH)
 {
 }
 
@@ -147,6 +154,19 @@ void MapsManager::init(ros::NodeHandle & nh, ros::NodeHandle & pnh, const std::s
 		octomapTreeDepth_ = 16;
 	}
 	ROS_INFO("%s(maps): octomap_tree_depth         = %d", name.c_str(), octomapTreeDepth_);
+
+	pnh.param("local_octomap_tree_depth", localOctomapTreeDepth_, localOctomapTreeDepth_);
+   	if(localOctomapTreeDepth_ > 16)
+	{
+		ROS_WARN("octomap_tree_depth maximum is 16");
+		localOctomapTreeDepth_ = 16;
+	}
+	else if(localOctomapTreeDepth_ < 0)
+	{
+		ROS_WARN("local_octomap_tree_depth cannot be negative, set to 16 instead");
+		octomapTreeDepth_ = 16;
+	}
+	ROS_INFO("%s(maps): local_octomap_tree_depth         = %d", name.c_str(), localOctomapTreeDepth_);
 #endif
 #endif
 
@@ -185,10 +205,19 @@ void MapsManager::init(ros::NodeHandle & nh, ros::NodeHandle & pnh, const std::s
 
 #ifdef WITH_OCTOMAP_MSGS
 #ifdef RTABMAP_OCTOMAP
+	// global octomap publishers
 	octoMapPubBin_ = nht->advertise<octomap_msgs::Octomap>("octomap_binary", 1, latching_);
 	latched_.insert(std::make_pair((void*)&octoMapPubBin_, false));
 	octoMapPubFull_ = nht->advertise<octomap_msgs::Octomap>("octomap_full", 1, latching_);
 	latched_.insert(std::make_pair((void*)&octoMapPubFull_, false));
+
+	// local octomap publishers
+	localOctoMapPubBin_ = nht->advertise<octomap_msgs::Octomap>("octomap_local_binary", 1, latching_);
+	latched_.insert(std::make_pair((void*)&localOctoMapPubBin_, false));
+	localOctoMapPubFull_ = nht->advertise<octomap_msgs::Octomap>("octomap_local_full", 1, latching_);
+	latched_.insert(std::make_pair((void*)&localOctoMapPubFull_, false));
+
+
 	octoMapCloud_ = nht->advertise<sensor_msgs::PointCloud2>("octomap_occupied_space", 1, latching_);
 	latched_.insert(std::make_pair((void*)&octoMapCloud_, false));
 	octoMapFrontierCloud_ = nht->advertise<sensor_msgs::PointCloud2>("octomap_global_frontier_space", 1, latching_);
@@ -334,6 +363,23 @@ void MapsManager::setParameters(const rtabmap::ParametersMap & parameters)
 #endif
 }
 
+void MapsManager::setLocalParameters(const rtabmap::ParametersMap & parameters)
+{
+	parameters_ = parameters;
+	// TODO: parse local occupancy grid parameters
+
+#ifdef WITH_OCTOMAP_MSGS
+#ifdef RTABMAP_OCTOMAP
+	if(localOctomap_)
+	{
+		delete localOctomap_;
+		localOctomap_ = 0;
+	}
+	localOctomap_ = new OctoMap(parameters_);
+#endif
+#endif
+}
+
 void MapsManager::set2DMap(
 		const cv::Mat & map,
 		float xMin,
@@ -417,6 +463,8 @@ bool MapsManager::hasSubscribers() const
 			scanMapPub_.getNumSubscribers() != 0 ||
 			octoMapPubBin_.getNumSubscribers() != 0 ||
 			octoMapPubFull_.getNumSubscribers() != 0 ||
+			localOctoMapPubFull_.getNumSubscribers() != 0 ||
+            localOctoMapPubBin_.getNumSubscribers() != 0 ||
 			octoMapCloud_.getNumSubscribers() != 0 ||
 			octoMapFrontierCloud_.getNumSubscribers() != 0 ||
 			octoMapObstacleCloud_.getNumSubscribers() != 0 ||
@@ -450,6 +498,8 @@ std::map<int, rtabmap::Transform> MapsManager::updateMapCaches(
 		updateOctomap =
 				octoMapPubBin_.getNumSubscribers() != 0 ||
 				octoMapPubFull_.getNumSubscribers() != 0 ||
+				localOctoMapPubBin_.getNumSubscribers() != 0 ||
+				localOctoMapPubFull_.getNumSubscribers() != 0 ||
 				octoMapCloud_.getNumSubscribers() != 0 ||
 				octoMapFrontierCloud_.getNumSubscribers() != 0 ||
 				octoMapObstacleCloud_.getNumSubscribers() != 0 ||
@@ -551,122 +601,119 @@ std::map<int, rtabmap::Transform> MapsManager::updateMapCaches(
 			if(!iter->second.isNull())
 			{
 				rtabmap::SensorData data;
-				if(updateGridCache && (iter->first == 0 || !uContains(gridMaps_, iter->first)))
-				{
-					ROS_DEBUG("Data required for %d", iter->first);
-					std::map<int, rtabmap::Signature>::const_iterator findIter = signatures.find(iter->first);
-					if(findIter != signatures.end())
-					{
-						data = findIter->second.sensorData();
-					}
-					else if(memory)
-					{
-						data = memory->getNodeData(iter->first, occupancyGrid_->isGridFromDepth() && !occupancySavedInDB, !occupancyGrid_->isGridFromDepth() && !occupancySavedInDB, false, true);
-					}
+				if(updateGridCache && (iter->first == 0 || !uContains(gridMaps_, iter->first))) {
+                    ROS_DEBUG("Data required for %d", iter->first);
+                    std::map<int, rtabmap::Signature>::const_iterator findIter = signatures.find(iter->first);
+                    if (findIter != signatures.end()) {
+                        data = findIter->second.sensorData();
+                    } else if (memory) {
+                        data = memory->getNodeData(iter->first,
+                                                   occupancyGrid_->isGridFromDepth() && !occupancySavedInDB,
+                                                   !occupancyGrid_->isGridFromDepth() && !occupancySavedInDB, false,
+                                                   true);
+                    }
 
-					ROS_DEBUG("Adding grid map %d to cache...", iter->first);
-					cv::Point3f viewPoint;
-					cv::Mat ground, obstacles, emptyCells;
-					if(iter->first > 0)
-					{
-						cv::Mat rgb, depth;
-						LaserScan scan;
-						bool generateGrid = data.gridCellSize() == 0.0f;
-						static bool warningShown = false;
-						if(occupancySavedInDB && generateGrid && !warningShown)
-						{
-							warningShown = true;
-							UWARN("Occupancy grid for location %d should be added to global map (e..g, a ROS node is subscribed to "
-									"any occupancy grid output) but it cannot be found "
-									"in memory. For convenience, the occupancy "
-									"grid is regenerated. Make sure parameter \"%s\" is true to "
-									"avoid this warning for the next locations added to map. For older "
-									"locations already in database without an occupancy grid map, you can use the "
-									"\"rtabmap-databaseViewer\" to regenerate the missing occupancy grid maps and "
-									"save them back in the database for next sessions. This warning is only shown once.",
-									data.id(), Parameters::kRGBDCreateOccupancyGrid().c_str());
-						}
-						if(memory && occupancySavedInDB && generateGrid)
-						{
-							// if we are here, it is because we loaded a database with old nodes not having occupancy grid set
-							// try reload again
-							data = memory->getNodeData(iter->first, occupancyGrid_->isGridFromDepth(), !occupancyGrid_->isGridFromDepth(), false, false);
-						}
-						data.uncompressData(
-								occupancyGrid_->isGridFromDepth() && generateGrid?&rgb:0,
-								occupancyGrid_->isGridFromDepth() && generateGrid?&depth:0,
-								!occupancyGrid_->isGridFromDepth() && generateGrid?&scan:0,
-								0,
-								generateGrid?0:&ground,
-								generateGrid?0:&obstacles,
-								generateGrid?0:&emptyCells);
+                    ROS_DEBUG("Adding grid map %d to cache...", iter->first);
+                    cv::Point3f viewPoint;
+                    cv::Mat ground, obstacles, emptyCells;
+                    if (iter->first > 0) {
+                        cv::Mat rgb, depth;
+                        LaserScan scan;
+                        bool generateGrid = data.gridCellSize() == 0.0f;
+                        static bool warningShown = false;
+                        if (occupancySavedInDB && generateGrid && !warningShown) {
+                            warningShown = true;
+                            UWARN("Occupancy grid for location %d should be added to global map (e..g, a ROS node is subscribed to "
+                                  "any occupancy grid output) but it cannot be found "
+                                  "in memory. For convenience, the occupancy "
+                                  "grid is regenerated. Make sure parameter \"%s\" is true to "
+                                  "avoid this warning for the next locations added to map. For older "
+                                  "locations already in database without an occupancy grid map, you can use the "
+                                  "\"rtabmap-databaseViewer\" to regenerate the missing occupancy grid maps and "
+                                  "save them back in the database for next sessions. This warning is only shown once.",
+                                  data.id(), Parameters::kRGBDCreateOccupancyGrid().c_str());
+                        }
+                        if (memory && occupancySavedInDB && generateGrid) {
+                            // if we are here, it is because we loaded a database with old nodes not having occupancy grid set
+                            // try reload again
+                            data = memory->getNodeData(iter->first, occupancyGrid_->isGridFromDepth(),
+                                                       !occupancyGrid_->isGridFromDepth(), false, false);
+                        }
+                        data.uncompressData(
+                                occupancyGrid_->isGridFromDepth() && generateGrid ? &rgb : 0,
+                                occupancyGrid_->isGridFromDepth() && generateGrid ? &depth : 0,
+                                !occupancyGrid_->isGridFromDepth() && generateGrid ? &scan : 0,
+                                0,
+                                generateGrid ? 0 : &ground,
+                                generateGrid ? 0 : &obstacles,
+                                generateGrid ? 0 : &emptyCells);
 
-						if(generateGrid)
-						{
-							Signature tmp(data);
-							tmp.setPose(iter->second);
-							occupancyGrid_->createLocalMap(tmp, ground, obstacles, emptyCells, viewPoint);
-							uInsert(gridMaps_, std::make_pair(iter->first, std::make_pair(std::make_pair(ground, obstacles), emptyCells)));
-							uInsert(gridMapsViewpoints_, std::make_pair(iter->first, viewPoint));
-						}
-						else
-						{
-							viewPoint = data.gridViewPoint();
-							uInsert(gridMaps_, std::make_pair(iter->first, std::make_pair(std::make_pair(ground, obstacles), emptyCells)));
-							uInsert(gridMapsViewpoints_, std::make_pair(iter->first, viewPoint));
-						}
-					}
-					else
-					{
-						// generate tmp occupancy grid for latest id (assuming data is already uncompressed)
-						// For negative laser scans, fill empty space?
-						bool unknownSpaceFilled = Parameters::defaultGridScan2dUnknownSpaceFilled();
-						Parameters::parse(parameters_, Parameters::kGridScan2dUnknownSpaceFilled(), unknownSpaceFilled);
+                        if (generateGrid) {
+                            Signature tmp(data);
+                            tmp.setPose(iter->second);
+                            occupancyGrid_->createLocalMap(tmp, ground, obstacles, emptyCells, viewPoint);
+                            uInsert(gridMaps_, std::make_pair(iter->first,
+                                                              std::make_pair(std::make_pair(ground, obstacles),
+                                                                             emptyCells)));
+                            uInsert(gridMapsViewpoints_, std::make_pair(iter->first, viewPoint));
+                        } else {
+                            viewPoint = data.gridViewPoint();
+                            uInsert(gridMaps_, std::make_pair(iter->first,
+                                                              std::make_pair(std::make_pair(ground, obstacles),
+                                                                             emptyCells)));
+                            uInsert(gridMapsViewpoints_, std::make_pair(iter->first, viewPoint));
+                        }
+                    } else {
+                        // generate tmp occupancy grid for latest id (assuming data is already uncompressed)
+                        // For negative laser scans, fill empty space?
+                        bool unknownSpaceFilled = Parameters::defaultGridScan2dUnknownSpaceFilled();
+                        Parameters::parse(parameters_, Parameters::kGridScan2dUnknownSpaceFilled(), unknownSpaceFilled);
 
-						if(unknownSpaceFilled != scanEmptyRayTracing_ && scanEmptyRayTracing_)
-						{
-							ParametersMap parameters;
-							parameters.insert(ParametersPair(Parameters::kGridScan2dUnknownSpaceFilled(), uBool2Str(scanEmptyRayTracing_)));
-							occupancyGrid_->parseParameters(parameters);
-						}
+                        if (unknownSpaceFilled != scanEmptyRayTracing_ && scanEmptyRayTracing_) {
+                            ParametersMap parameters;
+                            parameters.insert(ParametersPair(Parameters::kGridScan2dUnknownSpaceFilled(),
+                                                             uBool2Str(scanEmptyRayTracing_)));
+                            occupancyGrid_->parseParameters(parameters);
+                        }
 
-						cv::Mat rgb, depth;
-						LaserScan scan;
-						bool generateGrid = data.gridCellSize() == 0.0f || (unknownSpaceFilled != scanEmptyRayTracing_ && scanEmptyRayTracing_);
-						data.uncompressData(
-							occupancyGrid_->isGridFromDepth() && generateGrid?&rgb:0,
-							occupancyGrid_->isGridFromDepth() && generateGrid?&depth:0,
-							!occupancyGrid_->isGridFromDepth() && generateGrid?&scan:0,
-							0,
-							generateGrid?0:&ground,
-							generateGrid?0:&obstacles,
-							generateGrid?0:&emptyCells);
+                        cv::Mat rgb, depth;
+                        LaserScan scan;
+                        bool generateGrid = data.gridCellSize() == 0.0f ||
+                                            (unknownSpaceFilled != scanEmptyRayTracing_ && scanEmptyRayTracing_);
+                        data.uncompressData(
+                                occupancyGrid_->isGridFromDepth() && generateGrid ? &rgb : 0,
+                                occupancyGrid_->isGridFromDepth() && generateGrid ? &depth : 0,
+                                !occupancyGrid_->isGridFromDepth() && generateGrid ? &scan : 0,
+                                0,
+                                generateGrid ? 0 : &ground,
+                                generateGrid ? 0 : &obstacles,
+                                generateGrid ? 0 : &emptyCells);
 
-						if(generateGrid)
-						{
-							Signature tmp(data);
-							tmp.setPose(iter->second);
-							occupancyGrid_->createLocalMap(tmp, ground, obstacles, emptyCells, viewPoint);
-							uInsert(gridMaps_,  std::make_pair(iter->first, std::make_pair(std::make_pair(ground, obstacles), emptyCells)));
-							uInsert(gridMapsViewpoints_, std::make_pair(iter->first, viewPoint));
-						}
-						else
-						{
-							viewPoint = data.gridViewPoint();
-							uInsert(gridMaps_,  std::make_pair(iter->first, std::make_pair(std::make_pair(ground, obstacles), emptyCells)));
-							uInsert(gridMapsViewpoints_, std::make_pair(iter->first, viewPoint));
-						}
+                        if (generateGrid) {
+                            Signature tmp(data);
+                            tmp.setPose(iter->second);
+                            occupancyGrid_->createLocalMap(tmp, ground, obstacles, emptyCells, viewPoint);
+                            uInsert(gridMaps_, std::make_pair(iter->first,
+                                                              std::make_pair(std::make_pair(ground, obstacles),
+                                                                             emptyCells)));
+                            uInsert(gridMapsViewpoints_, std::make_pair(iter->first, viewPoint));
+                        } else {
+                            viewPoint = data.gridViewPoint();
+                            uInsert(gridMaps_, std::make_pair(iter->first,
+                                                              std::make_pair(std::make_pair(ground, obstacles),
+                                                                             emptyCells)));
+                            uInsert(gridMapsViewpoints_, std::make_pair(iter->first, viewPoint));
+                        }
 
-						// put back
-						if(unknownSpaceFilled != scanEmptyRayTracing_ && scanEmptyRayTracing_)
-						{
-							ParametersMap parameters;
-							parameters.insert(ParametersPair(Parameters::kGridScan2dUnknownSpaceFilled(), uBool2Str(unknownSpaceFilled)));
-							occupancyGrid_->parseParameters(parameters);
-						}
-					}
-				}
-
+                        // put back
+                        if (unknownSpaceFilled != scanEmptyRayTracing_ && scanEmptyRayTracing_) {
+                            ParametersMap parameters;
+                            parameters.insert(ParametersPair(Parameters::kGridScan2dUnknownSpaceFilled(),
+                                                             uBool2Str(unknownSpaceFilled)));
+                            occupancyGrid_->parseParameters(parameters);
+                        }
+                    }
+                }
 				if(updateGrid &&
 						(iter->first == 0 ||
 						  occupancyGrid_->addedNodes().find(iter->first) == occupancyGrid_->addedNodes().end()))
@@ -696,6 +743,9 @@ std::map<int, rtabmap::Transform> MapsManager::updateMapCaches(
 						   (mter->second.second.empty() || mter->second.second.channels() > 2))
 						{
 							octomap_->addToCache(iter->first, mter->second.first.first, mter->second.first.second, mter->second.second, pter->second);
+
+							// update local octomap cache
+							localOctomap_->addToCache(iter->first, mter->second.first.first, mter->second.first.second, mter->second.second, pter->second);
 						}
 						else if(!mter->second.first.first.empty() && !mter->second.first.second.empty() && !mter->second.second.empty())
 						{
@@ -727,6 +777,10 @@ std::map<int, rtabmap::Transform> MapsManager::updateMapCaches(
 			UTimer time;
 			octomapUpdated_ = octomap_->update(filteredPoses);
 			ROS_INFO("Octomap update time = %fs", time.ticks());
+
+            // clear and recreate local octomap
+            localOctomap_->clear();
+            localOctomap_->update(filteredPoses);
 		}
 #endif
 #endif

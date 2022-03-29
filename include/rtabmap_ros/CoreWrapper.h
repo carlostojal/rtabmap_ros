@@ -239,6 +239,8 @@ private:
 #ifdef WITH_OCTOMAP_MSGS
 	bool octomapBinaryCallback(octomap_msgs::GetOctomap::Request  &req, octomap_msgs::GetOctomap::Response &res);
 	bool octomapFullCallback(octomap_msgs::GetOctomap::Request  &req, octomap_msgs::GetOctomap::Response &res);
+	bool localOctomapBinaryCallback(octomap_msgs::GetOctomap::Request  &req, octomap_msgs::GetOctomap::Response &res);
+	bool localOctomapFullCallback(octomap_msgs::GetOctomap::Request &req, octomap_msgs::GetOctomap::Response &res);
 #endif
 
 	void loadParameters(const std::string & configFile, rtabmap::ParametersMap & parameters);
@@ -361,6 +363,8 @@ private:
 #ifdef WITH_OCTOMAP_MSGS
 	ros::ServiceServer octomapBinarySrv_;
 	ros::ServiceServer octomapFullSrv_;
+	ros::ServiceServer localOctomapBinarySrv_;
+	ros::ServiceServer localOctomapLocalFullSrv_;
 #endif
 
 	MoveBaseClient * mbClient_;

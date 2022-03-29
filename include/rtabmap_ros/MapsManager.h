@@ -52,6 +52,7 @@ public:
 	bool hasSubscribers() const;
 	void backwardCompatibilityParameters(ros::NodeHandle & pnh, rtabmap::ParametersMap & parameters) const;
 	void setParameters(const rtabmap::ParametersMap & parameters);
+	void setLocalParameters(const rtabmap::ParametersMap & parameters);
 	void set2DMap(const cv::Mat & map, float xMin, float yMin, float cellSize, const std::map<int, rtabmap::Transform> & poses, const rtabmap::Memory * memory = 0);
 
 	std::map<int, rtabmap::Transform> getFilteredPoses(
@@ -82,6 +83,9 @@ public:
 	const rtabmap::OctoMap * getOctomap() const {return octomap_;}
 	const rtabmap::OccupancyGrid * getOccupancyGrid() const {return occupancyGrid_;}
 
+	const rtabmap::OctoMap * getLocalOctomap() const {return localOctomap_;}
+	// TODO: getLocalOccupancyGrid
+
 private:
 	// mapping stuff
 	bool cloudOutputVoxelized_;
@@ -100,8 +104,13 @@ private:
 	ros::Publisher gridMapPub_;
 	ros::Publisher gridProbMapPub_;
 	ros::Publisher scanMapPub_;
+	// global octomap publishers
 	ros::Publisher octoMapPubBin_;
 	ros::Publisher octoMapPubFull_;
+	// local octomap publishers
+	ros::Publisher localOctoMapPubBin_;
+	ros::Publisher localOctoMapPubFull_;
+
 	ros::Publisher octoMapCloud_;
 	ros::Publisher octoMapFrontierCloud_;
 	ros::Publisher octoMapGroundCloud_;
@@ -131,6 +140,14 @@ private:
 	bool octomapUpdated_;
 
 	rtabmap::ParametersMap parameters_;
+
+	// TODO: localOccupancyGrid_
+
+	rtabmap::OctoMap * localOctomap_;
+	int localOctomapTreeDepth_;
+	bool localOctomapUpdated_;
+
+	rtabmap::ParametersMap localParameters_;
 
 	bool latching_;
 	std::map<void*, bool> latched_;

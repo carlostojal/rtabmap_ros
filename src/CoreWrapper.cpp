@@ -643,6 +643,7 @@ void CoreWrapper::onInit()
 	}
 
 	mapsManager_.setParameters(parameters_);
+	mapsManager_.setLocalParameters(parameters_);
 
 	// Init RTAB-Map
 	rtabmap_.init(parameters_, databasePath_);
@@ -4657,6 +4658,50 @@ bool CoreWrapper::octomapFullCallback(
 	bool success = octomap->octree()->size() && octomap_msgs::fullMapToMsg(*octomap->octree(), res.map);
 	return success;
 }
+
+// this is the first octomap update entrypoint
+bool CoreWrapper::localOctomapBinaryCallback(
+        octomap_msgs::GetOctomap::Request  &req,
+        octomap_msgs::GetOctomap::Response &res)
+{
+    NODELET_INFO("Sending binary map data on service request");
+    res.map.header.frame_id = mapFrameId_;
+    res.map.header.stamp = ros::Time::now();
+
+    std::map<int, Transform> poses = rtabmap_.getLocalOptimizedPoses();
+    if((mappingMaxNodes_ > 0 || mappingAltitudeDelta_>0.0) && poses.size()>1)
+    {
+        poses = filterNodesToAssemble(poses, poses.rbegin()->second);
+    }
+
+    mapsManager_.updateMapCaches(poses, rtabmap_.getMemory(), false, true);
+
+    const rtabmap::OctoMap * octomap = mapsManager_.getLocalOctomap();
+    bool success = octomap->octree()->size() && octomap_msgs::binaryMapToMsg(*octomap->octree(), res.map);
+    return success;
+}
+
+bool CoreWrapper::localOctomapFullCallback(
+		octomap_msgs::GetOctomap::Request &req,
+		octomap_msgs::GetOctomap::Response & res)
+{
+	NODELET_INFO("Sending full local map data on service request");
+	res.map.header.frame_id = mapFrameId_;
+	res.map.header.stamp = ros::Time::now();
+
+	std::map<int, Transform> poses = rtabmap_.getLocalOptimizedPoses();
+	if((mappingMaxNodes_ > 0 || mappingAltitudeDelta_>0.0) && poses.size()>1)
+	{
+		poses = filterNodesToAssemble(poses, poses.rbegin()->second);
+	}
+
+	mapsManager_.updateMapCaches(poses, rtabmap_.getMemory(), false, true);
+
+	const rtabmap::OctoMap * octomap = mapsManager_.getLocalOctomap();
+	bool success = octomap->octree()->size() && octomap_msgs::fullMapToMsg(*octomap->octree(), res.map);
+	return success;
+}
+
 #endif
 #endif
 
