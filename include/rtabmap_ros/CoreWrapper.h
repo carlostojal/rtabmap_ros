@@ -364,7 +364,7 @@ private:
 	ros::ServiceServer octomapBinarySrv_;
 	ros::ServiceServer octomapFullSrv_;
 	ros::ServiceServer localOctomapBinarySrv_;
-	ros::ServiceServer localOctomapLocalFullSrv_;
+	ros::ServiceServer localOctomapFullSrv_;
 #endif
 
 	MoveBaseClient * mbClient_;
