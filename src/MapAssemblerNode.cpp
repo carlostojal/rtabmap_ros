@@ -354,6 +354,8 @@ private:
 #ifdef RTABMAP_OCTOMAP
 	ros::ServiceServer octomapBinarySrv_;
 	ros::ServiceServer octomapFullSrv_;
+	ros::ServiceServer localOctomapBinarySrv_;
+	ros::ServiceServer localOctomapFullSrv_;
 #endif
 #endif
 	bool localGridsRegenerated_;
