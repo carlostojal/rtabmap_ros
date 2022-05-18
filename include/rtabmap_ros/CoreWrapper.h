@@ -238,6 +238,8 @@ private:
 	bool addLinkCallback(rtabmap_ros::AddLink::Request&, rtabmap_ros::AddLink::Response&);
 	bool getNodesInRadiusCallback(rtabmap_ros::GetNodesInRadius::Request&, rtabmap_ros::GetNodesInRadius::Response&);
 #ifdef WITH_OCTOMAP_MSGS
+	bool localOctomapBinaryCallback(octomap_msgs::GetOctomap::Request &req, octomap_msgs::GetOctomap::Response &res);
+	bool localOctomapFullCallback(octomap_msgs::GetOctomap::Request &req, octomap_msgs::GetOctomap::Response &res);
 	bool octomapBinaryCallback(octomap_msgs::GetOctomap::Request  &req, octomap_msgs::GetOctomap::Response &res);
 	bool octomapFullCallback(octomap_msgs::GetOctomap::Request  &req, octomap_msgs::GetOctomap::Response &res);
 #endif

@@ -6,7 +6,7 @@
   <!--           See "delete_db_on_start" option below... -->
 
   <!-- Choose visualization -->
-  <arg name="rviz" default="false" />
+  <arg name="rviz" default="true" />
   <arg name="rtabmapviz" default="true" /> 
   
   <param name="use_sim_time" type="bool" value="True"/>
@@ -51,6 +51,9 @@
 	  <param name="RGBD/OptimizeMaxError"     type="string" value="4"/>	    <!-- Reject any loop closure causing large errors (>3x link's covariance) in the map -->
 	  <param name="Reg/Force3DoF"             type="string" value="true"/>  <!-- 2D SLAM -->
 	  <param name="Grid/FromDepth"            type="string" value="false"/> <!-- Create 2D occupancy grid from laser scan -->
+	  <param name="Grid/3D"					type="string" value="true"/>
+	  <param name="Grid/Sensor"					type="string" value="2"/> <!-- Both laser scan and depth images -->
+	  <param name="Grid/CellSize"				type="string" value="1"/>
 	  <param name="Mem/STMSize"               type="string" value="30"/>    <!-- increased to 30 to avoid adding too many loop closures on just seen locations -->
 	  <param name="RGBD/LocalRadius"          type="string" value="5"/>     <!-- limit length of proximity detections -->
 	  <param name="Icp/CorrespondenceRatio"   type="string" value="0.2"/>   <!-- minimum scan overlap to accept loop closure -->

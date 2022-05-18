@@ -102,6 +102,8 @@ private:
 	ros::Publisher scanMapPub_;
 	ros::Publisher octoMapPubBin_;
 	ros::Publisher octoMapPubFull_;
+	ros::Publisher localOctoMapPubBin_;
+	ros::Publisher localOctoMapPubFull_;
 	ros::Publisher octoMapCloud_;
 	ros::Publisher octoMapFrontierCloud_;
 	ros::Publisher octoMapGroundCloud_;
@@ -129,6 +131,10 @@ private:
 	rtabmap::OctoMap * octomap_;
 	int octomapTreeDepth_;
 	bool octomapUpdated_;
+
+	rtabmap::OctoMap * localOctomap_;
+	int localOctomapTreeDepth_;
+	bool localOctomapUpdated_;
 
 	rtabmap::ParametersMap parameters_;
 

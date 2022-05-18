@@ -15,8 +15,8 @@
    -->
    
    <!-- Choose visualization -->
-   <arg name="rviz" default="true" />
-   <arg name="rtabmapviz" default="false" />
+   <arg name="rviz" default="false" />
+   <arg name="rtabmapviz" default="true" />
    <arg name="local_bundle" default="true" />
    <arg name="stereo_sync" default="false" />
     
@@ -93,6 +93,8 @@
          <param name="Rtabmap/TimeThr"                   type="string" value="700"/>
          <param name="Grid/DepthDecimation"              type="string" value="4"/>
          <param name="Grid/FlatObstacleDetected"         type="string" value="true"/>
+		 <param name="Grid/CellSize"					type="string" value="0.3"/> <!-- 0.14 for global and 0.05 for local -->
+		 <param name="Grid/ClusterRadius"				type="string" value="0.5"/>
          <param name="Kp/MaxDepth"                       type="string" value="0"/>
          <param name="Kp/DetectorStrategy"               type="string" value="6"/>  
          <param name="Vis/EstimationType"                type="string" value="1"/>   <!-- 0=3D->3D, 1=3D->2D (PnP) -->
